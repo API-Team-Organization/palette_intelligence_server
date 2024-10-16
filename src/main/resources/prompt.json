@@ -1,0 +1,132 @@
+{
+  "load_model": {
+    "inputs": {
+      "ckpt_name": "RealitiesEdgeXLLIGHTNING_LIGHTNING34Step.safetensors"
+    },
+    "class_type": "CheckpointLoaderSimple"
+  },
+  "initial_image": {
+    "inputs": {
+      "width": 1024,
+      "height": 1024,
+      "batch_size": 1
+    },
+    "class_type": "EmptyLatentImage"
+  },
+  "positive_node": {
+    "inputs": {
+      "text": "",
+      "clip": [
+        "load_model",
+        1
+      ]
+    },
+    "class_type": "CLIPTextEncode"
+  },
+  "negative_node": {
+    "inputs": {
+      "text": "text, watermark, nsfw",
+      "clip": [
+        "load_model",
+        1
+      ]
+    },
+    "class_type": "CLIPTextEncode"
+  },
+  "load_cnet_model": {
+    "inputs": {
+      "control_net_name": "controlnet++_union_sdxl.safetensors"
+    },
+    "class_type": "ControlNetLoader"
+  },
+  "run_cnet": {
+    "inputs": {
+      "strength": 0.8,
+      "start_percent": 0,
+      "end_percent": 1,
+      "positive": [
+        "positive_node",
+        0
+      ],
+      "negative": [
+        "negative_node",
+        0
+      ],
+      "control_net": [
+        "load_cnet_model",
+        0
+      ],
+      "image": [
+        "image_invert",
+        0
+      ]
+    },
+    "class_type": "ControlNetApplyAdvanced"
+  },
+  "run_t2i": {
+    "inputs": {
+      "seed": 919652873937109,
+      "steps": 24,
+      "cfg": 4,
+      "sampler_name": "dpmpp_2m",
+      "scheduler": "karras",
+      "denoise": 1,
+      "model": [
+        "load_model",
+        0
+      ],
+      "positive": [
+        "run_cnet",
+        0
+      ],
+      "negative": [
+        "run_cnet",
+        1
+      ],
+      "latent_image": [
+        "initial_image",
+        0
+      ]
+    },
+    "class_type": "KSampler"
+  },
+  "mask_image_loader": {
+    "inputs": {
+      "base64_data": "",
+      "image_output": "Preview",
+      "save_prefix": "ComfyUI"
+    },
+    "class_type": "easy loadImageBase64"
+  },
+  "image_invert": {
+    "inputs": {
+      "image": [
+        "mask_image_loader",
+        0
+      ]
+    },
+    "class_type": "ImageInvert"
+  },
+  "decode_vae": {
+    "inputs": {
+      "samples": [
+        "run_t2i",
+        0
+      ],
+      "vae": [
+        "load_model",
+        2
+      ]
+    },
+    "class_type": "VAEDecode"
+  },
+  "ws_save": {
+    "inputs": {
+      "images": [
+        "decode_vae",
+        0
+      ]
+    },
+    "class_type": "SaveImageWebsocket"
+  }
+}
