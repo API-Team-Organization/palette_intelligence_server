@@ -22,7 +22,6 @@ import io.ktor.client.plugins.contentnegotiation.ContentNegotiation as ClientCon
 import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
-import io.ktor.server.util.*
 import io.ktor.server.webjars.*
 import io.ktor.websocket.*
 import kotlinx.coroutines.async
@@ -158,24 +157,21 @@ fun Application.configureRouting() {
 
             val lastTimeout = AtomicLong(System.currentTimeMillis())
 
-            client.webSocket {
-                url {
-                    host = cfg.comfyUrl
-                    port = cfg.port
-                    path("ws")
-                    parameters {
-                        set("clientId", clientId)
-                    }
-                    protocol = if (cfg.isSSL) URLProtocol.WSS else URLProtocol.WS
-                }
-
+            client.webSocket("${(if (cfg.isSSL) URLProtocol.WSS else URLProtocol.WS).name}://${cfg.comfyUrl}:${cfg.port}/ws?clientId=${clientId}") {
                 val timeout = async {
                     while (true) {
                         if (System.currentTimeMillis() - lastTimeout.get() > 5000) {
                             close()
-                            println("trigger?")
-                            this@post.call.respond(GenerateResponse(false, error = "image not generated; maybe image cached?"))
+                            try {
+                                this@post.call.respond(
+                                    GenerateResponse(
+                                        false,
+                                        error = "image not generated; maybe image cached?"
+                                    )
+                                )
+                            } catch (ignored: Exception) {}
                             cancel()
+                            break
                         }
                     }
                 }
