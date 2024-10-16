@@ -101,10 +101,10 @@ fun Application.configureRouting() {
             }
 
             val q = res.body<JsonObject>()
-            println(q)
             ts.clear()
             ts.addAll(q["queue_pending"]!!.jsonArray.mapNotNull { it.jsonArray[1].str() })
             ts.addAll(q["queue_running"]!!.jsonArray.mapNotNull { it.jsonArray[1].str() })
+            println(ts)
 //            currentRunning = q["queue_running"][0]?.jsonArray?.get(1).str()
         }
     }
