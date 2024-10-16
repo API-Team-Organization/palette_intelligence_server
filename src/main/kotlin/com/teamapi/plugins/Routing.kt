@@ -102,6 +102,7 @@ fun Application.configureRouting() {
 
             val q = res.body<JsonObject>()
             println(q)
+            ts.clear()
             ts.addAll(q["queue_pending"]!!.jsonArray.mapNotNull { it.jsonArray[1].str() })
             ts.addAll(q["queue_running"]!!.jsonArray.mapNotNull { it.jsonArray[1].str() })
 //            currentRunning = q["queue_running"][0]?.jsonArray?.get(1).str()
@@ -182,8 +183,11 @@ fun Application.configureRouting() {
 
             client.webSocket("${(if (cfg.isSSL) URLProtocol.WSS else URLProtocol.WS).name}://${cfg.comfyUrl}:${cfg.port}/ws?clientId=${clientId}") {
                 val timeout = async {
+                    var count = 0
                     while (this@webSocket.isActive) {
+                        delay(1000L)
                         if (promptId != null && !ts.contains(promptId)) {
+                            if (count++ < 3) continue
                             close()
                             try {
                                 this@post.call.respond(
