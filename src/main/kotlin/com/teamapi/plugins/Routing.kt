@@ -182,7 +182,7 @@ fun Application.configureRouting() {
             client.webSocket("${(if (cfg.isSSL) URLProtocol.WSS else URLProtocol.WS).name}://${cfg.comfyUrl}:${cfg.port}/ws?clientId=${clientId}") {
                 val timeout = async {
                     while (this@webSocket.isActive) {
-                        if (!ts.contains(promptId)) {
+                        if (promptId != null && !ts.contains(promptId)) {
                             close()
                             try {
                                 this@post.call.respond(
