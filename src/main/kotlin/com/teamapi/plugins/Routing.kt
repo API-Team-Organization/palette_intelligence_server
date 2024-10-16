@@ -24,12 +24,9 @@ import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import io.ktor.server.webjars.*
 import io.ktor.websocket.*
-import kotlinx.coroutines.async
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.cancellable
 import kotlinx.coroutines.flow.consumeAsFlow
-import kotlinx.coroutines.isActive
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.json.*
 import java.awt.Color
@@ -40,7 +37,7 @@ import java.awt.image.BufferedImage
 import java.io.ByteArrayOutputStream
 import java.nio.charset.StandardCharsets
 import java.util.*
-import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.CopyOnWriteArraySet
 import javax.imageio.ImageIO
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
@@ -89,6 +86,32 @@ fun Application.configureRouting() {
         ClassLoader.getSystemResourceAsStream("Pretendard-Regular.otf")!!
     ).deriveFont(128f)
     val clientId = UUID.randomUUID().toString().replace("-", "")
+
+    val ts = CopyOnWriteArraySet<String>()
+//    var currentRunning: String? = null
+
+    val coroutine = CoroutineScope(Dispatchers.Unconfined).async {
+        val cfg = config
+        while (true) {
+            delay(1000L)
+
+            val res = client.get {
+                url("${(if (cfg.isSSL) URLProtocol.HTTPS else URLProtocol.HTTP).name}://${cfg.comfyUrl}:${cfg.port}/queue")
+                accept(ContentType.Application.Json)
+            }
+
+            val q = res.body<JsonObject>()
+            ts.addAll(q["queue_pending"]!!.jsonArray.mapNotNull { it.jsonArray[1].str() })
+            ts.addAll(q["queue_running"]!!.jsonArray.mapNotNull { it.jsonArray[1].str() })
+//            currentRunning = q["queue_running"][0]?.jsonArray?.get(1).str()
+        }
+    }
+
+    Runtime.getRuntime().addShutdownHook(Thread {
+         runBlocking {
+             coroutine.cancelAndJoin()
+         }
+    })
 
     routing {
         post("/gen") {
@@ -156,12 +179,10 @@ fun Application.configureRouting() {
                 promptId = res.body<QueueResponse>().promptId
             }
 
-            val lastTimeout = AtomicLong(System.currentTimeMillis())
-
             client.webSocket("${(if (cfg.isSSL) URLProtocol.WSS else URLProtocol.WS).name}://${cfg.comfyUrl}:${cfg.port}/ws?clientId=${clientId}") {
                 val timeout = async {
                     while (this@webSocket.isActive) {
-                        if (System.currentTimeMillis() - lastTimeout.get() > 5000L) {
+                        if (!ts.contains(promptId)) {
                             close()
                             try {
                                 this@post.call.respond(
@@ -178,10 +199,9 @@ fun Application.configureRouting() {
                 }
                 var lastId: String? = null
                 incoming.consumeAsFlow().cancellable().collect {
-                    lastTimeout.set(System.currentTimeMillis())
                     if (it is Frame.Text) {
                         val msg = it.readText()
-                        println(msg)
+
                         val thing = Json.parseToJsonElement(msg)
                         if (promptId != null && thing["type"].str() == "executing" && thing["data"]["node"].str() == "ws_save" && thing["data"]["prompt_id"].str() == promptId) {
                             lastId = thing["data"]["prompt_id"].str()
