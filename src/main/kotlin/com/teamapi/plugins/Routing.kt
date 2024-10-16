@@ -145,7 +145,8 @@ fun Application.configureRouting() {
             val queued = async {
                 val res = client.post {
                     url {
-                        url.takeFrom(cfg.comfyUrl)
+                        host = cfg.comfyUrl
+                        port = cfg.port
                         path("prompt")
                         protocol = if (cfg.isSSL) URLProtocol.HTTPS else URLProtocol.HTTP
                     }
@@ -159,7 +160,8 @@ fun Application.configureRouting() {
 
             client.webSocket {
                 url {
-                    takeFrom(cfg.comfyUrl)
+                    host = cfg.comfyUrl
+                    port = cfg.port
                     path("ws")
                     parameters {
                         set("clientId", clientId)
