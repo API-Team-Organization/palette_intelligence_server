@@ -29,6 +29,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.cancellable
 import kotlinx.coroutines.flow.consumeAsFlow
+import kotlinx.coroutines.isActive
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.json.*
 import java.awt.Color
@@ -159,8 +160,8 @@ fun Application.configureRouting() {
 
             client.webSocket("${(if (cfg.isSSL) URLProtocol.WSS else URLProtocol.WS).name}://${cfg.comfyUrl}:${cfg.port}/ws?clientId=${clientId}") {
                 val timeout = async {
-                    while (true) {
-                        if (System.currentTimeMillis() - lastTimeout.get() > 5000) {
+                    while (this@webSocket.isActive) {
+                        if (System.currentTimeMillis() - lastTimeout.get() > 5000L) {
                             close()
                             try {
                                 this@post.call.respond(
