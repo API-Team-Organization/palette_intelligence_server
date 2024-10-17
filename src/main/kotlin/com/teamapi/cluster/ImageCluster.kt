@@ -18,10 +18,7 @@ import io.ktor.http.*
 import io.ktor.serialization.kotlinx.json.*
 import io.ktor.websocket.*
 import kotlinx.atomicfu.atomic
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
-import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.SendChannel
 import kotlinx.coroutines.flow.cancellable
 import kotlinx.coroutines.flow.consumeAsFlow
@@ -69,7 +66,7 @@ class ImageCluster(private val cfg: Config, private val callback: () -> Map<Stri
 
     private fun baseUrl(p: Protocol) = "${(if (cfg.isSSL) p.ssl else p.nonSsl).name}://${cfg.comfyUrl}:${cfg.port}"
 
-    @OptIn(ExperimentalEncodingApi::class)
+    @OptIn(ExperimentalEncodingApi::class, DelicateCoroutinesApi::class)
     private val globalWs = CoroutineScope(Dispatchers.Unconfined).async {
         client.webSocket("${baseUrl(Protocol.WEBSOCKET)}/ws?clientId=${clientId}") {
             val lastId = atomic<String?>(null)
@@ -90,13 +87,15 @@ class ImageCluster(private val cfg: Config, private val callback: () -> Map<Stri
                             lastId.value = thing["data"]["prompt_id"].str()
                         } else if (thing["data"]!!["node"] as? JsonNull != null && lastId.value != null) {
                             val finishListener = callback()[lastId.value]
-                            finishListener?.trySend(
-                                ActorMessage.GenerateResult(
-                                    false,
-                                    error = "Generated, but no image found."
-                                )
-                            ) // no happen maybe
-                            finishListener?.close()
+                            if (finishListener?.isClosedForSend == false) {
+                                finishListener.trySend(
+                                    ActorMessage.GenerateResult(
+                                        false,
+                                        error = "Generated, but no image found."
+                                    )
+                                ) // no happen maybe
+                                finishListener.close()
+                            }
                         }
                     } else if (thing["type"].str() == "status") {
                         updateQueue()
