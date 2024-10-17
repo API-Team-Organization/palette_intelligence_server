@@ -85,8 +85,8 @@ class ImageCluster(private val cfg: Config, private val callback: () -> Map<Stri
                     if (thing["type"].str() == "executing") {
                         if (thing["data"]["node"].str() == "ws_save") {
                             lastId.value = thing["data"]["prompt_id"].str()
-                        } else if (thing["data"]!!["node"] as? JsonNull != null) {
-                            val finishListener = callback()[lastId.value!!]
+                        } else if (thing["data"]!!["node"] as? JsonNull != null && lastId.value != null) {
+                            val finishListener = callback()[lastId.value]
                             finishListener?.trySend(
                                 ActorMessage.GenerateResult(
                                     false,
