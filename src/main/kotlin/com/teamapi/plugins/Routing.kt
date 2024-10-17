@@ -4,6 +4,7 @@ import com.teamapi.cluster.ImageCluster
 import com.teamapi.dto.Config
 import com.teamapi.dto.GenerateRequest
 import com.teamapi.dto.actor.ActorMessage
+import com.teamapi.dto.ws.QueueInfoMessage
 import com.teamapi.utils.editChild
 import io.github.smiley4.ktorswaggerui.SwaggerUI
 import io.ktor.http.*
@@ -108,11 +109,16 @@ fun Application.configureRouting() {
     routing {
         webSocket("/ws") {
             val pId = call.request.queryParameters["prompt"] ?: return@webSocket close()
+            val workingCluster = clusters.map { it.getPosition(pId) }.find { it != -1 } ?: return@webSocket close()
+
+            val initMsg = defaultJson.encodeToString(QueueInfoMessage(workingCluster))
+            outgoing.trySend(Frame.Text(initMsg))
 
             callbackFlow {
                 callback[pId] = this
                 awaitClose { callback.remove(pId) }
             }.onCompletion {
+                delay(1000L)
                 if (this@webSocket.isActive) this@webSocket.close()
             }.collect {
                 val msg = defaultJson.encodeToString(it.data)

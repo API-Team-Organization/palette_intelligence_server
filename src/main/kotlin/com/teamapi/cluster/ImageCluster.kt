@@ -5,6 +5,7 @@ import com.teamapi.dto.actor.ActorMessage
 import com.teamapi.dto.comfy.QueueRequest
 import com.teamapi.dto.comfy.QueueResponse
 import com.teamapi.plugins.defaultJson
+import com.teamapi.queue.getPosition
 import com.teamapi.utils.get
 import com.teamapi.utils.str
 import io.ktor.client.*
@@ -63,6 +64,8 @@ class ImageCluster(private val cfg: Config, private val callback: () -> Map<Stri
         }
         return res.body<QueueResponse>()
     }
+
+    fun getPosition(id: String) = ts.getPosition(id)
 
     private fun baseUrl(p: Protocol) = "${(if (cfg.isSSL) p.ssl else p.nonSsl).name}://${cfg.comfyUrl}:${cfg.port}"
 
