@@ -22,6 +22,9 @@ object WSMessageSerializer : JsonContentPolymorphicSerializer<WSBaseMessage>(WSB
             throw SerializationException(e)
         }
 
-        return mt.delegatingSerializer
+        return when (mt) {
+            MessageType.QUEUE_STATUS -> QueueInfoMessage.serializer()
+            MessageType.GENERATE_FINISH -> GenerateMessage.serializer()
+        }
     }
 }
