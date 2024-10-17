@@ -192,7 +192,7 @@ fun Application.configureRouting() {
             }
 
             client.webSocket("${(if (cfg.isSSL) URLProtocol.WSS else URLProtocol.WS).name}://${cfg.comfyUrl}:${cfg.port}/ws?clientId=${clientId}") {
-                val timeout = async {
+                val timeout = launch {
                     var count = 0
                     while (this@webSocket.isActive) {
                         delay(1000L)
@@ -223,11 +223,16 @@ fun Application.configureRouting() {
                             lastId = thing["data"]["prompt_id"].str()
                         }
                     } else if (it is Frame.Binary && promptId != null && lastId == promptId) {
-                        queue.remove(promptId)
-                        timeout.cancel()
-                        close(CloseReason(CloseReason.Codes.NORMAL, "OK"))
-
                         this@post.call.respond(GenerateResponse(true, Base64.encode(it.data.drop(8).toByteArray())))
+                        try {
+                            queue.remove(promptId)
+                        } catch (ignore: Exception) {}
+                        try {
+                            timeout.cancel()
+                        } catch (ignore: Exception) {}
+                        try {
+                            close()
+                        } catch (ignore: Exception) {}
                     }
                 }
                 queued.cancelAndJoin() // this will not happen... maybe?
