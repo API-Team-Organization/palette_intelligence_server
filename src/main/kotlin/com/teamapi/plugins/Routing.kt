@@ -21,7 +21,6 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.SendChannel
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.callbackFlow
-import kotlinx.coroutines.flow.onCompletion
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.*
@@ -53,7 +52,7 @@ val defaultJson = Json {
     classDiscriminatorMode = ClassDiscriminatorMode.NONE
 }
 
-@OptIn(ExperimentalEncodingApi::class, ExperimentalSerializationApi::class)
+@OptIn(ExperimentalEncodingApi::class, ExperimentalSerializationApi::class, DelicateCoroutinesApi::class)
 fun Application.configureRouting() {
     install(Webjars) {
         path = "/webjars" //defaults to /webjars
@@ -113,23 +112,25 @@ fun Application.configureRouting() {
 
             val initMsg = defaultJson.encodeToString(QueueInfoMessage(workingCluster))
             outgoing.trySend(Frame.Text(initMsg))
-
-            callbackFlow {
-                callback[pId] = this
-                awaitClose { callback.remove(pId) }
-            }.onCompletion {
-                delay(1000L)
-                if (this@webSocket.isActive) this@webSocket.close()
-            }.collect {
-                val msg = defaultJson.encodeToString(it.data)
-                outgoing.trySend(Frame.Text(msg))
-            }
-
             outgoing.invokeOnClose {
                 it?.printStackTrace()
                 callback[pId]?.close()
                 println("closed")
             }
+
+            callbackFlow {
+                callback[pId] = this
+                awaitClose { callback.remove(pId) }
+            }.collect {
+                if (outgoing.isClosedForSend) {
+                    callback[pId]?.close() // clos
+                    return@collect
+                }
+                val msg = defaultJson.encodeToString(it.data)
+                outgoing.trySend(Frame.Text(msg))
+            }
+
+            close()
         }
         post("/gen") {
             val body = this.call.receive<GenerateRequest>()
