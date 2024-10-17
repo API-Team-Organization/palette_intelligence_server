@@ -108,10 +108,12 @@ fun Application.configureRouting() {
     routing {
         webSocket("/ws") {
             val pId = call.request.queryParameters["prompt"] ?: return@webSocket close()
-            val workingCluster = clusters.map { it.getPosition(pId) }.find { it != -1 } ?: return@webSocket close()
+            val workingCluster = clusters.map { it.getPosition(pId) }.find { it != -1 }// ?: return@webSocket close()
 
-            val initMsg = defaultJson.encodeToString(QueueInfoMessage(workingCluster))
-            outgoing.trySend(Frame.Text(initMsg))
+            if (workingCluster != null) {
+                val initMsg = defaultJson.encodeToString(QueueInfoMessage(workingCluster))
+                outgoing.trySend(Frame.Text(initMsg))
+            }
             outgoing.invokeOnClose {
                 callback[pId]?.close()
                 println("closed")
