@@ -119,8 +119,7 @@ fun Application.configureRouting() {
             callbackFlow {
                 callback[pId] = this
                 awaitClose { callback.remove(pId) }
-            }
-                .collect {
+            }.collect {
                 if (outgoing.isClosedForSend) {
                     return@collect // wait
                 }
