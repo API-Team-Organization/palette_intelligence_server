@@ -107,13 +107,14 @@ fun Application.configureRouting() {
 
     routing {
         webSocket("/ws") {
+            println("hi")
             val pId = call.request.queryParameters["prompt"] ?: return@webSocket close()
-            val workingCluster = clusters.map { it.getPosition(pId) }.find { it != -1 }// ?: return@webSocket close()
+            println("pid received: $pId")
+            val workingCluster = clusters.map { it.getPosition(pId) }.find { it != -1 } ?: return@webSocket close()
+            println("cluster found! position: $workingCluster")
 
-            if (workingCluster != null) {
-                val initMsg = defaultJson.encodeToString(QueueInfoMessage(workingCluster))
-                outgoing.trySend(Frame.Text(initMsg))
-            }
+            val initMsg = defaultJson.encodeToString(QueueInfoMessage(workingCluster))
+            outgoing.trySend(Frame.Text(initMsg))
             outgoing.invokeOnClose {
                 callback[pId]?.close()
                 println("closed")
@@ -131,6 +132,7 @@ fun Application.configureRouting() {
                 outgoing.trySend(Frame.Text(msg))
             }
 
+            println("finalize")
             close()
         }
         post("/gen") {
