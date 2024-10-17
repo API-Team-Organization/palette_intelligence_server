@@ -4,14 +4,8 @@ import com.teamapi.cluster.ImageCluster
 import com.teamapi.dto.Config
 import com.teamapi.dto.GenerateRequest
 import com.teamapi.dto.actor.ActorMessage
-import com.teamapi.dto.comfy.QueueRequest
-import com.teamapi.dto.comfy.QueueResponse
 import com.teamapi.utils.editChild
 import io.github.smiley4.ktorswaggerui.SwaggerUI
-import io.ktor.client.*
-import io.ktor.client.call.*
-import io.ktor.client.engine.cio.*
-import io.ktor.client.request.*
 import io.ktor.http.*
 import io.ktor.serialization.kotlinx.json.*
 import io.ktor.server.application.*
@@ -36,14 +30,11 @@ import java.awt.Graphics2D
 import java.awt.geom.Rectangle2D
 import java.awt.image.BufferedImage
 import java.io.ByteArrayOutputStream
-import java.nio.charset.StandardCharsets
-import java.util.*
 import java.util.concurrent.ConcurrentHashMap
 import javax.imageio.ImageIO
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.random.Random
-import io.ktor.client.plugins.contentnegotiation.ContentNegotiation as ClientContentNegotiation
 
 operator fun Rectangle2D.component1(): Double = width
 operator fun Rectangle2D.component2(): Double = height
@@ -114,13 +105,6 @@ fun Application.configureRouting() {
         }
     })
 
-
-    val client = HttpClient(CIO) {
-        install(ClientContentNegotiation) {
-            json(defaultJson)
-        }
-    }
-
     routing {
         webSocket("/ws") {
             val pId = call.request.queryParameters["prompt"] ?: return@webSocket close()
@@ -142,8 +126,6 @@ fun Application.configureRouting() {
             }
         }
         post("/gen") {
-            val clientId = UUID.randomUUID().toString().replace("-", "")
-
             val body = this.call.receive<GenerateRequest>()
 
             val buf = BufferedImage(body.width, body.height, BufferedImage.TYPE_INT_RGB).apply {
@@ -191,20 +173,8 @@ fun Application.configureRouting() {
                 }
             }
 
-            val cfg = config
-
-            val res = client.post {
-                url {
-                    host = cfg.comfyUrl
-                    port = cfg.port
-                    path("prompt")
-                    protocol = if (cfg.isSSL) URLProtocol.HTTPS else URLProtocol.HTTP
-                }
-                setBody(QueueRequest(JsonObject(prompt), clientId))
-                contentType(ContentType.Application.Json.withCharset(StandardCharsets.UTF_8))
-            }
-
-            call.respond(res.body<QueueResponse>())
+            val queueResult = clusters.random().queue(JsonObject(prompt)) // TODO: prioritized queue
+            call.respond(queueResult)
         }
 
         get("/webjars") {

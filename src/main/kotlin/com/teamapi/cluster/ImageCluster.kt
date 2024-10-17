@@ -2,6 +2,8 @@ package com.teamapi.cluster
 
 import com.teamapi.dto.Config
 import com.teamapi.dto.actor.ActorMessage
+import com.teamapi.dto.comfy.QueueRequest
+import com.teamapi.dto.comfy.QueueResponse
 import com.teamapi.plugins.defaultJson
 import com.teamapi.utils.get
 import com.teamapi.utils.str
@@ -26,6 +28,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonArray
+import java.nio.charset.StandardCharsets
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
@@ -44,14 +47,31 @@ class ImageCluster(private val cfg: Config, private val callback: () -> Map<Stri
         globalWs.cancelAndJoin()
     }
 
+    enum class Protocol(val ssl: URLProtocol, val nonSsl: URLProtocol) {
+        WEBSOCKET(URLProtocol.WSS, URLProtocol.WS),
+        HTTP(URLProtocol.HTTPS, URLProtocol.HTTP),
+        ;
+
+    }
+
+    suspend fun queue(obj: JsonObject): QueueResponse {
+        val res = client.post("${baseUrl(Protocol.HTTP)}/prompt") {
+            setBody(QueueRequest(obj))
+            contentType(ContentType.Application.Json.withCharset(StandardCharsets.UTF_8))
+        }
+        return res.body<QueueResponse>()
+    }
+
+    private fun baseUrl(p: Protocol) = "${(if (cfg.isSSL) p.ssl else p.nonSsl).name}://${cfg.comfyUrl}:${cfg.port}"
+
     @OptIn(ExperimentalEncodingApi::class)
     private val globalWs = CoroutineScope(Dispatchers.Unconfined).async {
-        client.webSocket("${(if (cfg.isSSL) URLProtocol.WSS else URLProtocol.WS).name}://${cfg.comfyUrl}:${cfg.port}/ws") {
+        client.webSocket("${baseUrl(Protocol.WEBSOCKET)}/ws") {
             val lastId = atomic<String?>(null)
             incoming.consumeAsFlow().cancellable().collect {
                 if (it is Frame.Text) {
                     val msg = it.readText()
-
+                    println("${cfg.comfyUrl}: $msg")
                     val thing = Json.parseToJsonElement(msg)
                     if (thing["type"].str() == "executing") {
                         if (thing["data"]["node"].str() == "ws_save") {
