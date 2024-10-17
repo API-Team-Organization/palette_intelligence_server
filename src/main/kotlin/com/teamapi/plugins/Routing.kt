@@ -1,33 +1,34 @@
 package com.teamapi.plugins
 
+import com.teamapi.cluster.ImageCluster
 import com.teamapi.dto.Config
 import com.teamapi.dto.GenerateRequest
-import com.teamapi.dto.GenerateResponse
+import com.teamapi.dto.actor.ActorMessage
 import com.teamapi.dto.comfy.QueueRequest
 import com.teamapi.dto.comfy.QueueResponse
 import com.teamapi.utils.editChild
-import com.teamapi.utils.get
-import com.teamapi.utils.str
 import io.github.smiley4.ktorswaggerui.SwaggerUI
 import io.ktor.client.*
 import io.ktor.client.call.*
 import io.ktor.client.engine.cio.*
-import io.ktor.client.plugins.websocket.*
 import io.ktor.client.request.*
 import io.ktor.http.*
 import io.ktor.serialization.kotlinx.json.*
 import io.ktor.server.application.*
 import io.ktor.server.plugins.contentnegotiation.*
-import io.ktor.client.plugins.contentnegotiation.ContentNegotiation as ClientContentNegotiation
 import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import io.ktor.server.webjars.*
+import io.ktor.server.websocket.*
 import io.ktor.websocket.*
 import kotlinx.coroutines.*
-import kotlinx.coroutines.flow.cancellable
-import kotlinx.coroutines.flow.consumeAsFlow
+import kotlinx.coroutines.channels.SendChannel
+import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.onCompletion
 import kotlinx.serialization.ExperimentalSerializationApi
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.*
 import java.awt.Color
 import java.awt.Font
@@ -37,12 +38,12 @@ import java.awt.image.BufferedImage
 import java.io.ByteArrayOutputStream
 import java.nio.charset.StandardCharsets
 import java.util.*
-import java.util.concurrent.CopyOnWriteArraySet
+import java.util.concurrent.ConcurrentHashMap
 import javax.imageio.ImageIO
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.random.Random
-
+import io.ktor.client.plugins.contentnegotiation.ContentNegotiation as ClientContentNegotiation
 
 operator fun Rectangle2D.component1(): Double = width
 operator fun Rectangle2D.component2(): Double = height
@@ -50,13 +51,23 @@ operator fun Rectangle2D.component2(): Double = height
 @OptIn(ExperimentalSerializationApi::class)
 val config get() = Json.decodeFromStream<Config>(ClassLoader.getSystemResourceAsStream("config.json")!!)
 
+@OptIn(ExperimentalSerializationApi::class)
+val defaultJson = Json {
+    ignoreUnknownKeys = true
+    isLenient = true
+    allowSpecialFloatingPointValues = true
+    encodeDefaults = true // might need this also
+    classDiscriminator = "_serverClass"
+    classDiscriminatorMode = ClassDiscriminatorMode.NONE
+}
+
 @OptIn(ExperimentalEncodingApi::class, ExperimentalSerializationApi::class)
 fun Application.configureRouting() {
     install(Webjars) {
         path = "/webjars" //defaults to /webjars
     }
     install(ContentNegotiation) {
-        json()
+        json(defaultJson)
     }
     install(SwaggerUI) {
         swagger {
@@ -74,53 +85,62 @@ fun Application.configureRouting() {
         }
     }
 
-    val queue = CopyOnWriteArraySet<String>()
+    install(WebSockets)
 
-    val client = HttpClient(CIO) {
-        install(WebSockets)
-        install(ClientContentNegotiation) {
-            json()
-        }
-    }
 
     val defaultFont = Font.createFont(
         Font.TRUETYPE_FONT,
         ClassLoader.getSystemResourceAsStream("Pretendard-Regular.otf")!!
     ).deriveFont(128f)
+    val callback = ConcurrentHashMap<String, SendChannel<ActorMessage>>()
+    val clusters = listOf(
+        ImageCluster(config) { callback }
+    )
 
-    val ts = CopyOnWriteArraySet<String>()
-//    var currentRunning: String? = null
+    Runtime.getRuntime().addShutdownHook(Thread {
+        callback.forEach {
+            it.value.trySend(
+                ActorMessage.GenerateResult(
+                    false,
+                    error = "Server is closing."
+                )
+            )
+        }
 
-    val coroutine = CoroutineScope(Dispatchers.Unconfined).async {
-        val cfg = config
-        while (true) {
-            if (queue.isEmpty()) {
-                delay(100L)
-                continue
+        runBlocking {
+            clusters.forEach {
+                it.destroy()
             }
+        }
+    })
 
-            val res = client.get {
-                url("${(if (cfg.isSSL) URLProtocol.HTTPS else URLProtocol.HTTP).name}://${cfg.comfyUrl}:${cfg.port}/queue")
-                accept(ContentType.Application.Json)
-            }
 
-            val q = res.body<JsonObject>()
-            ts.clear()
-            ts.addAll(q["queue_pending"]!!.jsonArray.mapNotNull { it.jsonArray[1].str() })
-            ts.addAll(q["queue_running"]!!.jsonArray.mapNotNull { it.jsonArray[1].str() })
-
-            delay(1000L)
-//            currentRunning = q["queue_running"][0]?.jsonArray?.get(1).str()
+    val client = HttpClient(CIO) {
+        install(ClientContentNegotiation) {
+            json(defaultJson)
         }
     }
 
-    Runtime.getRuntime().addShutdownHook(Thread {
-         runBlocking {
-             coroutine.cancelAndJoin()
-         }
-    })
-
     routing {
+        webSocket("/ws") {
+            val pId = call.request.queryParameters["prompt"] ?: return@webSocket close()
+
+            callbackFlow {
+                callback[pId] = this
+                awaitClose { callback.remove(pId) }
+            }.onCompletion {
+                if (this@webSocket.isActive) this@webSocket.close()
+            }.collect {
+                val msg = defaultJson.encodeToString(it.data)
+                outgoing.trySend(Frame.Text(msg))
+            }
+
+            outgoing.invokeOnClose {
+                it?.printStackTrace()
+                callback[pId]?.close()
+                println("closed")
+            }
+        }
         post("/gen") {
             val clientId = UUID.randomUUID().toString().replace("-", "")
 
@@ -171,73 +191,20 @@ fun Application.configureRouting() {
                 }
             }
 
-            var promptId: String? = null
             val cfg = config
 
-            val queued = async {
-                val res = client.post {
-                    url {
-                        host = cfg.comfyUrl
-                        port = cfg.port
-                        path("prompt")
-                        protocol = if (cfg.isSSL) URLProtocol.HTTPS else URLProtocol.HTTP
-                    }
-                    setBody(QueueRequest(JsonObject(prompt), clientId))
-                    contentType(ContentType.Application.Json.withCharset(StandardCharsets.UTF_8))
+            val res = client.post {
+                url {
+                    host = cfg.comfyUrl
+                    port = cfg.port
+                    path("prompt")
+                    protocol = if (cfg.isSSL) URLProtocol.HTTPS else URLProtocol.HTTP
                 }
-                promptId = res.body<QueueResponse>().promptId
+                setBody(QueueRequest(JsonObject(prompt), clientId))
+                contentType(ContentType.Application.Json.withCharset(StandardCharsets.UTF_8))
             }
 
-            queued.invokeOnCompletion {
-                queue.add(promptId)
-            }
-
-            client.webSocket("${(if (cfg.isSSL) URLProtocol.WSS else URLProtocol.WS).name}://${cfg.comfyUrl}:${cfg.port}/ws?clientId=${clientId}") {
-                val timeout = launch {
-                    var count = 0
-                    while (this@webSocket.isActive) {
-                        delay(1000L)
-                        if (promptId != null && !ts.contains(promptId)) {
-                            if (count++ < 3) continue
-                            close()
-                            queue.remove(promptId)
-                            try {
-                                this@post.call.respond(
-                                    GenerateResponse(
-                                        false,
-                                        error = "image not generated; maybe image cached?"
-                                    )
-                                )
-                            } catch (ignored: Exception) {}
-                            cancel()
-                            break
-                        }
-                    }
-                }
-                var lastId: String? = null
-                incoming.consumeAsFlow().cancellable().collect {
-                    if (it is Frame.Text) {
-                        val msg = it.readText()
-
-                        val thing = Json.parseToJsonElement(msg)
-                        if (promptId != null && thing["type"].str() == "executing" && thing["data"]["node"].str() == "ws_save" && thing["data"]["prompt_id"].str() == promptId) {
-                            lastId = thing["data"]["prompt_id"].str()
-                        }
-                    } else if (it is Frame.Binary && promptId != null && lastId == promptId) {
-                        this@post.call.respond(GenerateResponse(true, Base64.encode(it.data.drop(8).toByteArray())))
-                        try {
-                            queue.remove(promptId)
-                        } catch (ignore: Exception) {}
-                        try {
-                            timeout.cancel()
-                        } catch (ignore: Exception) {}
-                        try {
-                            close()
-                        } catch (ignore: Exception) {}
-                    }
-                }
-                queued.cancelAndJoin() // this will not happen... maybe?
-            }
+            call.respond(res.body<QueueResponse>())
         }
 
         get("/webjars") {
