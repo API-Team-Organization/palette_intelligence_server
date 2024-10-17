@@ -32,9 +32,13 @@ import java.nio.charset.StandardCharsets
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
+import kotlin.uuid.ExperimentalUuidApi
+import kotlin.uuid.Uuid
 
 class ImageCluster(private val cfg: Config, private val callback: () -> Map<String, SendChannel<ActorMessage>>) {
     private val ts = CopyOnWriteArrayList<Pair<String, Boolean>>()
+    @OptIn(ExperimentalUuidApi::class)
+    private val clientId = Uuid.random().toString().replace("-", "")
 
     private val client = HttpClient(CIO) {
         install(WebSockets)
@@ -56,7 +60,7 @@ class ImageCluster(private val cfg: Config, private val callback: () -> Map<Stri
 
     suspend fun queue(obj: JsonObject): QueueResponse {
         val res = client.post("${baseUrl(Protocol.HTTP)}/prompt") {
-            setBody(QueueRequest(obj))
+            setBody(QueueRequest(obj, clientId))
             contentType(ContentType.Application.Json.withCharset(StandardCharsets.UTF_8))
         }
         return res.body<QueueResponse>()
@@ -66,7 +70,7 @@ class ImageCluster(private val cfg: Config, private val callback: () -> Map<Stri
 
     @OptIn(ExperimentalEncodingApi::class)
     private val globalWs = CoroutineScope(Dispatchers.Unconfined).async {
-        client.webSocket("${baseUrl(Protocol.WEBSOCKET)}/ws") {
+        client.webSocket("${baseUrl(Protocol.WEBSOCKET)}/ws?clientId=${clientId}") {
             val lastId = atomic<String?>(null)
             incoming.consumeAsFlow().cancellable().collect {
                 if (it is Frame.Text) {
