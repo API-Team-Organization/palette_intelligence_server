@@ -24,6 +24,7 @@ import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.channels.SendChannel
 import kotlinx.coroutines.flow.cancellable
 import kotlinx.coroutines.flow.consumeAsFlow
+import kotlinx.coroutines.flow.onCompletion
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
@@ -72,7 +73,11 @@ class ImageCluster(private val cfg: Config, private val callback: () -> Map<Stri
     private val globalWs = CoroutineScope(Dispatchers.Unconfined).async {
         client.webSocket("${baseUrl(Protocol.WEBSOCKET)}/ws?clientId=${clientId}") {
             val lastId = atomic<String?>(null)
-            incoming.consumeAsFlow().cancellable().collect {
+            incoming
+                .consumeAsFlow()
+                .cancellable()
+                .onCompletion { println("WS CLOSED??") }
+                .collect {
                 if (it is Frame.Text) {
                     val msg = it.readText()
                     println("${cfg.comfyUrl}: $msg")
