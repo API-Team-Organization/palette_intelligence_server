@@ -126,8 +126,7 @@ fun Application.configureRouting() {
                 awaitClose { callback.remove(pId) }
             }.collect {
                 if (outgoing.isClosedForSend) {
-                    callback[pId]?.close() // clos
-                    return@collect
+                    return@collect // wait
                 }
                 val msg = defaultJson.encodeToString(it.data)
                 outgoing.trySend(Frame.Text(msg))
