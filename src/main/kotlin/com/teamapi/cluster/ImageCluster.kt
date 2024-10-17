@@ -76,7 +76,10 @@ class ImageCluster(private val cfg: Config, private val callback: () -> Map<Stri
             incoming
                 .consumeAsFlow()
                 .cancellable()
-                .onCompletion { println("WS CLOSED??") }
+                .onCompletion {
+                    it?.printStackTrace()
+                    println("WS CLOSED??")
+                }
                 .collect {
                 if (it is Frame.Text) {
                     val msg = it.readText()
