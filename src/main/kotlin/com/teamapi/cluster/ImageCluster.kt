@@ -25,10 +25,7 @@ import kotlinx.coroutines.channels.SendChannel
 import kotlinx.coroutines.flow.cancellable
 import kotlinx.coroutines.flow.consumeAsFlow
 import kotlinx.coroutines.flow.onCompletion
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonNull
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.*
 import java.nio.charset.StandardCharsets
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlin.io.encoding.Base64
@@ -129,11 +126,15 @@ class ImageCluster(private val cfg: Config, private val callback: () -> Map<Stri
 
         val workers = ts.groupBy({ it.second }) { it.first }
 
-        for ((i, t) in workers[false]!!.withIndex()) {
-            callback()[t]?.trySend(ActorMessage.QueueUpdate(i))
+        workers[false]?.let {
+            for ((i, t) in it.withIndex()) {
+                callback()[t]?.trySend(ActorMessage.QueueUpdate(i))
+            }
         }
-        for (t in workers[true]!!) {
-            callback()[t]?.trySend(ActorMessage.QueueUpdate(0)) // working
+        workers[true]?.let {
+            for (t in it) {
+                callback()[t]?.trySend(ActorMessage.QueueUpdate(0)) // working
+            }
         }
     }
 }
