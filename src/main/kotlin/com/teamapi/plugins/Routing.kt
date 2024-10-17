@@ -87,7 +87,6 @@ fun Application.configureRouting() {
         Font.TRUETYPE_FONT,
         ClassLoader.getSystemResourceAsStream("Pretendard-Regular.otf")!!
     ).deriveFont(128f)
-    val clientId = UUID.randomUUID().toString().replace("-", "")
 
     val ts = CopyOnWriteArraySet<String>()
 //    var currentRunning: String? = null
@@ -123,6 +122,8 @@ fun Application.configureRouting() {
 
     routing {
         post("/gen") {
+            val clientId = UUID.randomUUID().toString().replace("-", "")
+
             val body = this.call.receive<GenerateRequest>()
 
             val buf = BufferedImage(body.width, body.height, BufferedImage.TYPE_INT_RGB).apply {
