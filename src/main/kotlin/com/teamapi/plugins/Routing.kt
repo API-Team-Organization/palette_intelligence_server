@@ -44,8 +44,8 @@ import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.random.Random
 
 
-private operator fun Rectangle2D.component1(): Double = width
-private operator fun Rectangle2D.component2(): Double = height
+operator fun Rectangle2D.component1(): Double = width
+operator fun Rectangle2D.component2(): Double = height
 
 @OptIn(ExperimentalSerializationApi::class)
 val config get() = Json.decodeFromStream<Config>(ClassLoader.getSystemResourceAsStream("config.json")!!)
@@ -74,6 +74,8 @@ fun Application.configureRouting() {
         }
     }
 
+    val queue = CopyOnWriteArraySet<String>()
+
     val client = HttpClient(CIO) {
         install(WebSockets)
         install(ClientContentNegotiation) {
@@ -93,7 +95,10 @@ fun Application.configureRouting() {
     val coroutine = CoroutineScope(Dispatchers.Unconfined).async {
         val cfg = config
         while (true) {
-            delay(1000L)
+            if (queue.isEmpty()) {
+                delay(100L)
+                continue
+            }
 
             val res = client.get {
                 url("${(if (cfg.isSSL) URLProtocol.HTTPS else URLProtocol.HTTP).name}://${cfg.comfyUrl}:${cfg.port}/queue")
@@ -104,7 +109,8 @@ fun Application.configureRouting() {
             ts.clear()
             ts.addAll(q["queue_pending"]!!.jsonArray.mapNotNull { it.jsonArray[1].str() })
             ts.addAll(q["queue_running"]!!.jsonArray.mapNotNull { it.jsonArray[1].str() })
-            println(ts)
+
+            delay(1000L)
 //            currentRunning = q["queue_running"][0]?.jsonArray?.get(1).str()
         }
     }
@@ -181,6 +187,10 @@ fun Application.configureRouting() {
                 promptId = res.body<QueueResponse>().promptId
             }
 
+            queued.invokeOnCompletion {
+                queue.add(promptId)
+            }
+
             client.webSocket("${(if (cfg.isSSL) URLProtocol.WSS else URLProtocol.WS).name}://${cfg.comfyUrl}:${cfg.port}/ws?clientId=${clientId}") {
                 val timeout = async {
                     var count = 0
@@ -189,6 +199,7 @@ fun Application.configureRouting() {
                         if (promptId != null && !ts.contains(promptId)) {
                             if (count++ < 3) continue
                             close()
+                            queue.remove(promptId)
                             try {
                                 this@post.call.respond(
                                     GenerateResponse(
@@ -212,6 +223,7 @@ fun Application.configureRouting() {
                             lastId = thing["data"]["prompt_id"].str()
                         }
                     } else if (it is Frame.Binary && promptId != null && lastId == promptId) {
+                        queue.remove(promptId)
                         timeout.cancel()
                         close(CloseReason(CloseReason.Codes.NORMAL, "OK"))
 
