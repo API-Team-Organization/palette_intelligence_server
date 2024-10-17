@@ -113,7 +113,6 @@ fun Application.configureRouting() {
             val initMsg = defaultJson.encodeToString(QueueInfoMessage(workingCluster))
             outgoing.trySend(Frame.Text(initMsg))
             outgoing.invokeOnClose {
-                it?.printStackTrace()
                 callback[pId]?.close()
                 println("closed")
             }
