@@ -1,0 +1,149 @@
+{
+  "load_model": {
+    "inputs": {
+      "unet_name": "flux_schnell.sft",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader"
+  },
+  "load_clip_model": {
+    "inputs": {
+      "clip_name1": "clip_l.safetensors",
+      "clip_name2": "t5xxl_fp8_e4m3fn.safetensors",
+      "type": "flux"
+    },
+    "class_type": "DualCLIPLoader"
+  },
+  "load_cnet": {
+    "inputs": {
+      "control_net_name": "FLUX.1-dev-ControlNet-Union-Pro\\diffusion_pytorch_model.safetensors"
+    },
+    "class_type": "ControlNetLoader"
+  },
+  "cnet_mask_loader": {
+    "inputs": {
+      "base64_data": "",
+      "image_output": "Preview",
+      "save_prefix": "ComfyUI"
+    },
+    "class_type": "easy loadImageBase64"
+  },
+  "prompt": {
+    "inputs": {
+      "clip_l": "beautiful, masterpiece",
+      "t5xxl": "scenery nature glass bottle portrait, purple galaxy bottle",
+      "guidance": 3,
+      "clip": [
+        "load_clip_model",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncodeFlux"
+  },
+  "ef_loader_ed": {
+    "inputs": {
+      "ckpt_name": {
+        "content": "🔌 model_opt input",
+        "image": null
+      },
+      "vae_name": "FLUX1\\ae.safetensors",
+      "clip_skip": -2,
+      "paint_mode": "✍️ Txt2Img",
+      "batch_size": 1,
+      "seed": 1099251831063156,
+      "cfg": 1,
+      "sampler_name": "dpmpp_2m",
+      "scheduler": "karras",
+      "positive": "",
+      "negative": "",
+      "image_width": 768,
+      "image_height": 1024,
+      "model_opt": [
+        "load_model",
+        0
+      ],
+      "clip_opt": [
+        "load_clip_model",
+        0
+      ]
+    },
+    "class_type": "Efficient Loader 💬ED"
+  },
+  "ef_ksampler_ed": {
+    "inputs": {
+      "set_seed_cfg_sampler": "from context",
+      "seed": 981071500926403,
+      "steps": 6,
+      "cfg": 1,
+      "sampler_name": "dpmpp_2m",
+      "scheduler": "karras",
+      "denoise": 1,
+      "preview_method": "auto",
+      "guide_size": 512,
+      "guide_size_for": true,
+      "max_size": 1216,
+      "feather": 15,
+      "crop_factor": 3,
+      "cycle": 1,
+      "context": [
+        "apply_lora",
+        0
+      ]
+    },
+    "class_type": "KSampler (Efficient) 💬ED"
+  },
+  "ws_save": {
+    "inputs": {
+      "images": [
+        "ef_ksampler_ed",
+        1
+      ]
+    },
+    "class_type": "SaveImageWebsocket"
+  },
+  "apply_lora": {
+    "inputs": {
+      "context": [
+        "ef_loader_ed",
+        0
+      ],
+      "positive": [
+        "apply_cnet",
+        0
+      ],
+      "negative": [
+        "apply_cnet",
+        1
+      ]
+    },
+    "class_type": "Apply LoRA Stack 💬ED"
+  },
+  "apply_cnet": {
+    "inputs": {
+      "strength": 0.7000000000000001,
+      "start_percent": 0,
+      "end_percent": 1,
+      "positive": [
+        "prompt",
+        0
+      ],
+      "negative": [
+        "ef_loader_ed",
+        3
+      ],
+      "control_net": [
+        "load_cnet",
+        0
+      ],
+      "image": [
+        "cnet_mask_loader",
+        0
+      ],
+      "vae": [
+        "ef_loader_ed",
+        5
+      ]
+    },
+    "class_type": "ControlNetApplyAdvanced"
+  }
+}
