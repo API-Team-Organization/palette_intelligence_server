@@ -68,50 +68,59 @@ class ImageCluster(private val cfg: Config, private val callback: () -> Map<Stri
 
     @OptIn(ExperimentalEncodingApi::class, DelicateCoroutinesApi::class)
     private val globalWs = CoroutineScope(Dispatchers.Unconfined).async {
-        client.webSocket("${baseUrl(Protocol.WEBSOCKET)}/ws?clientId=${clientId}") {
-            val lastId = atomic<String?>(null)
-            incoming
-                .consumeAsFlow()
-                .cancellable()
-                .onCompletion {
-                    it?.printStackTrace()
-                    println("WS CLOSED??")
-                }
-                .collect {
-                if (it is Frame.Text) {
-                    val msg = it.readText()
-                    println("${cfg.comfyUrl}: $msg")
-                    val thing = Json.parseToJsonElement(msg)
-                    if (thing["type"].str() == "executing") {
-                        if (thing["data"]["node"].str() == "ws_save") {
-                            lastId.value = thing["data"]["prompt_id"].str()
-                        } else if (thing["data"]!!["node"] as? JsonNull != null && lastId.value != null) {
-                            val finishListener = callback()[lastId.value]
-                            if (finishListener?.isClosedForSend == false) {
-                                finishListener.trySend(
+        while (true) {
+            try {
+                client.webSocket("${baseUrl(Protocol.WEBSOCKET)}/ws?clientId=${clientId}") {
+                    val lastId = atomic<String?>(null)
+                    incoming
+                        .consumeAsFlow()
+                        .cancellable()
+                        .onCompletion {
+                            it?.printStackTrace()
+                            println("WS CLOSED??")
+                        }
+                        .collect {
+                            if (it is Frame.Text) {
+                                val msg = it.readText()
+                                println("${cfg.comfyUrl}: $msg")
+                                val thing = Json.parseToJsonElement(msg)
+                                if (thing["type"].str() == "executing") {
+                                    if (thing["data"]["node"].str() == "ws_save") {
+                                        lastId.value = thing["data"]["prompt_id"].str()
+                                    } else if (thing["data"]!!["node"] as? JsonNull != null && lastId.value != null) {
+                                        val finishListener = callback()[lastId.value]
+                                        if (finishListener?.isClosedForSend == false) {
+                                            finishListener.trySend(
+                                                ActorMessage.GenerateResult(
+                                                    false,
+                                                    error = "Generated, but no image found."
+                                                )
+                                            ) // no happen maybe
+                                            finishListener.close()
+                                        }
+                                    }
+                                } else if (thing["type"].str() == "status") {
+                                    updateQueue()
+                                }
+                            } else if (it is Frame.Binary && lastId.value != null) {
+                                val finishListener = callback()[lastId.value!!]
+                                finishListener?.trySend(
                                     ActorMessage.GenerateResult(
-                                        false,
-                                        error = "Generated, but no image found."
+                                        true,
+                                        Base64.encode(it.data.drop(8).toByteArray())
                                     )
-                                ) // no happen maybe
-                                finishListener.close()
+                                )
+                                finishListener?.close()
+                                lastId.value = null
                             }
                         }
-                    } else if (thing["type"].str() == "status") {
-                        updateQueue()
-                    }
-                } else if (it is Frame.Binary && lastId.value != null) {
-                    val finishListener = callback()[lastId.value!!]
-                    finishListener?.trySend(
-                        ActorMessage.GenerateResult(
-                            true,
-                            Base64.encode(it.data.drop(8).toByteArray())
-                        )
-                    )
-                    finishListener?.close()
-                    lastId.value = null
                 }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                println("Cluster died with Exception. trying to reconnect...")
             }
+            delay(3000L)
+            println("reconnecting...")
         }
     }
 
