@@ -77,7 +77,9 @@ fun Application.configureRouting() {
         }
     }
 
-    install(WebSockets)
+    install(WebSockets) {
+        timeoutMillis = -1
+    }
 
 
     val defaultFont = Font.createFont(
