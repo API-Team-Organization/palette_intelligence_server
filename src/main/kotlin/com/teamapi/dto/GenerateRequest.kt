@@ -8,5 +8,6 @@ data class GenerateRequest(
     val pos: Int,
     val width: Int,
     val height: Int,
-    val prompt: String
+    val prompt: String,
+    val enableCnet: Boolean
 )

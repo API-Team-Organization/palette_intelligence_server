@@ -14,20 +14,6 @@
     },
     "class_type": "DualCLIPLoader"
   },
-  "load_cnet": {
-    "inputs": {
-      "control_net_name": "FLUX.1-dev-ControlNet-Union-Pro\\diffusion_pytorch_model.safetensors"
-    },
-    "class_type": "ControlNetLoader"
-  },
-  "cnet_mask_loader": {
-    "inputs": {
-      "base64_data": "",
-      "image_output": "Preview",
-      "save_prefix": "ComfyUI"
-    },
-    "class_type": "easy loadImageBase64"
-  },
   "ef_loader_ed": {
     "inputs": {
       "ckpt_name": {
@@ -74,7 +60,7 @@
       "crop_factor": 3,
       "cycle": 1,
       "context": [
-        "apply_lora",
+        "ef_loader_ed",
         0
       ]
     },
@@ -88,50 +74,5 @@
       ]
     },
     "class_type": "SaveImageWebsocket"
-  },
-  "apply_lora": {
-    "inputs": {
-      "context": [
-        "ef_loader_ed",
-        0
-      ],
-      "positive": [
-        "apply_cnet",
-        0
-      ],
-      "negative": [
-        "apply_cnet",
-        1
-      ]
-    },
-    "class_type": "Apply LoRA Stack 💬ED"
-  },
-  "apply_cnet": {
-    "inputs": {
-      "strength": 0.7000000000000001,
-      "start_percent": 0,
-      "end_percent": 1,
-      "positive": [
-        "ef_loader_ed",
-        2
-      ],
-      "negative": [
-        "ef_loader_ed",
-        3
-      ],
-      "control_net": [
-        "load_cnet",
-        0
-      ],
-      "image": [
-        "cnet_mask_loader",
-        0
-      ],
-      "vae": [
-        "ef_loader_ed",
-        5
-      ]
-    },
-    "class_type": "ControlNetApplyAdvanced"
   }
 }

@@ -188,56 +188,70 @@ fun Application.configureRouting() {
         post("/gen/flux") {
             val body = this.call.receive<GenerateRequest>()
 
-            val buf = BufferedImage(body.width, body.height, BufferedImage.TYPE_INT_RGB).apply {
-                val graphic = graphics as Graphics2D
-                graphic.background = Color.BLACK
-                graphic.font = defaultFont
-
-                val (fontWidth, fontHeight) = graphic.fontMetrics.getStringBounds(body.title, graphic)
-                val drawPos = when (body.pos) {
-                    0 -> fontHeight
-                    1 -> body.height / 2 + fontHeight / 2
-                    else -> body.height - fontHeight / 2
-                }
-
-                graphic.setRenderingHint(RenderingHints.KEY_ALPHA_INTERPOLATION, RenderingHints.VALUE_ALPHA_INTERPOLATION_QUALITY)
-                graphic.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
-                graphic.setRenderingHint(RenderingHints.KEY_COLOR_RENDERING, RenderingHints.VALUE_COLOR_RENDER_QUALITY)
-                graphic.setRenderingHint(RenderingHints.KEY_DITHERING, RenderingHints.VALUE_DITHER_ENABLE)
-                graphic.setRenderingHint(RenderingHints.KEY_FRACTIONALMETRICS, RenderingHints.VALUE_FRACTIONALMETRICS_ON)
-                graphic.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR)
-                graphic.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY)
-                graphic.setRenderingHint(RenderingHints.KEY_STROKE_CONTROL, RenderingHints.VALUE_STROKE_PURE)
-
-                val transform = graphic.transform
-                transform.translate(body.width / 2 - fontWidth / 2, drawPos)
-                graphic.transform(transform)
-                graphic.color = Color.WHITE
-                val tl = TextLayout(body.title, graphic.font, graphic.fontRenderContext)
-                val shape = tl.getOutline(null)
-                graphic.stroke = BasicStroke(2f)
-
-                graphic.draw(shape)
-                graphic.color = Color.BLACK
-                graphic.fill(shape)
-            }
-
-            val maskImage = ByteArrayOutputStream().use {
-                ImageIO.write(buf, "png", it)
-                Base64.encode(it.toByteArray())
-            }
-
-            val base = String(ClassLoader.getSystemResourceAsStream("flux_prompt.json")!!.readAllBytes())
+            val base = String(ClassLoader.getSystemResourceAsStream(if (body.enableCnet) "flux_prompt.json" else "flux_no_cnet.json")!!.readAllBytes())
             val prompt = Json.parseToJsonElement(base).jsonObject.toMutableMap()
             val seed = JsonPrimitive(Random.nextLong().toULong())
 
-            prompt.editChild("prompt") {
-                editChild("inputs") {
-                    set("t5xxl", JsonPrimitive(body.prompt))
+            if (body.enableCnet) {
+                val buf = BufferedImage(body.width, body.height, BufferedImage.TYPE_INT_RGB).apply {
+                    val graphic = graphics as Graphics2D
+                    graphic.background = Color.BLACK
+                    graphic.font = defaultFont
+
+                    val (fontWidth, fontHeight) = graphic.fontMetrics.getStringBounds(body.title, graphic)
+                    val drawPos = when (body.pos) {
+                        0 -> fontHeight
+                        1 -> body.height / 2 + fontHeight / 2
+                        else -> body.height - fontHeight / 2
+                    }
+
+                    graphic.setRenderingHint(
+                        RenderingHints.KEY_ALPHA_INTERPOLATION,
+                        RenderingHints.VALUE_ALPHA_INTERPOLATION_QUALITY
+                    )
+                    graphic.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
+                    graphic.setRenderingHint(
+                        RenderingHints.KEY_COLOR_RENDERING,
+                        RenderingHints.VALUE_COLOR_RENDER_QUALITY
+                    )
+                    graphic.setRenderingHint(RenderingHints.KEY_DITHERING, RenderingHints.VALUE_DITHER_ENABLE)
+                    graphic.setRenderingHint(
+                        RenderingHints.KEY_FRACTIONALMETRICS,
+                        RenderingHints.VALUE_FRACTIONALMETRICS_ON
+                    )
+                    graphic.setRenderingHint(
+                        RenderingHints.KEY_INTERPOLATION,
+                        RenderingHints.VALUE_INTERPOLATION_BILINEAR
+                    )
+                    graphic.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY)
+                    graphic.setRenderingHint(RenderingHints.KEY_STROKE_CONTROL, RenderingHints.VALUE_STROKE_PURE)
+
+                    val transform = graphic.transform
+                    transform.translate(body.width / 2 - fontWidth / 2, drawPos)
+                    graphic.transform(transform)
+                    graphic.color = Color.WHITE
+                    val tl = TextLayout(body.title, graphic.font, graphic.fontRenderContext)
+                    val shape = tl.getOutline(null)
+                    graphic.stroke = BasicStroke(2f)
+
+                    graphic.draw(shape)
+                    graphic.color = Color.BLACK
+                    graphic.fill(shape)
+                }
+
+                val maskImage = ByteArrayOutputStream().use {
+                    ImageIO.write(buf, "png", it)
+                    Base64.encode(it.toByteArray())
+                }
+                prompt.editChild("cnet_mask_loader") {
+                    editChild("inputs") {
+                        set("base64_data", JsonPrimitive(maskImage))
+                    }
                 }
             }
             prompt.editChild("ef_loader_ed") {
                 editChild("inputs") {
+                    set("positive", JsonPrimitive(body.prompt))
                     set("image_width", JsonPrimitive(body.width))
                     set("image_height", JsonPrimitive(body.height))
                     set("seed", seed)
@@ -246,11 +260,6 @@ fun Application.configureRouting() {
             prompt.editChild("ef_ksampler_ed") {
                 editChild("inputs") {
                     set("seed", seed)
-                }
-            }
-            prompt.editChild("cnet_mask_loader") {
-                editChild("inputs") {
-                    set("base64_data", JsonPrimitive(maskImage))
                 }
             }
 
