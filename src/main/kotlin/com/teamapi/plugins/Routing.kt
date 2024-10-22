@@ -91,17 +91,17 @@ fun Application.configureRouting() {
         ImageCluster(config) { callback }
     )
 
-    Runtime.getRuntime().addShutdownHook(Thread {
-        callback.forEach {
-            it.value.trySend(
-                ActorMessage.GenerateResult(
-                    false,
-                    error = "Server is closing."
+    Runtime.getRuntime().addShutdownHook(object : Thread() {
+        override fun run() = runBlocking {
+            callback.forEach {
+                it.value.trySend(
+                    ActorMessage.GenerateResult(
+                        false,
+                        error = "Server is closing."
+                    )
                 )
-            )
-        }
+            }
 
-        runBlocking {
             clusters.forEach {
                 it.destroy()
             }
