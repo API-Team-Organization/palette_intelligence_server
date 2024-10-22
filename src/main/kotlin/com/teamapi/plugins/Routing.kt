@@ -78,7 +78,7 @@ fun Application.configureRouting() {
     }
 
     install(WebSockets) {
-        timeoutMillis = 60L * 1000L * 5L
+        timeoutMillis = 0
     }
 
 

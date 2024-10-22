@@ -44,7 +44,9 @@ class ImageCluster(private val cfg: Config, private val callback: () -> Map<Stri
     }
 
     suspend fun destroy() {
-        globalWs.cancelAndJoin()
+        try {
+            globalWs.cancelAndJoin()
+        } catch (ignored: Exception) {}
     }
 
     enum class Protocol(val ssl: URLProtocol, val nonSsl: URLProtocol) {
