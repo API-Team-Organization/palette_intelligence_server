@@ -7,6 +7,7 @@ import com.teamapi.dto.comfy.QueueResponse
 import com.teamapi.plugins.defaultJson
 import com.teamapi.queue.getPosition
 import com.teamapi.utils.get
+import com.teamapi.utils.int
 import com.teamapi.utils.str
 import io.ktor.client.*
 import io.ktor.client.call.*
@@ -102,6 +103,9 @@ class ImageCluster(private val cfg: Config, private val callback: () -> Map<Stri
                                         }
                                     }
                                 } else if (thing["type"].str() == "status") {
+                                    val remain = thing["data"]["status"]["exec_info"]["queue_remaining"].int()
+                                    if (remain == 0)
+                                        cleanup()
                                     updateQueue()
                                 }
                             } else if (it is Frame.Binary && lastId.value != null) {
@@ -126,9 +130,13 @@ class ImageCluster(private val cfg: Config, private val callback: () -> Map<Stri
         }
     }
 
+    private suspend fun cleanup() {
+        client.post("${baseUrl(Protocol.HTTP)}/api/easyuse/cleangpu")
+    }
+
     private suspend fun updateQueue() {
         val res = client.get {
-            url("${(if (cfg.isSSL) URLProtocol.HTTPS else URLProtocol.HTTP).name}://${cfg.comfyUrl}:${cfg.port}/queue")
+            url("${baseUrl(Protocol.HTTP)}/queue")
             accept(ContentType.Application.Json)
         }
 
