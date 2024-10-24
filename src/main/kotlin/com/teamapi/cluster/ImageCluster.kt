@@ -131,7 +131,7 @@ class ImageCluster(private val cfg: Config, private val callback: () -> Map<Stri
     }
 
     private suspend fun cleanup() {
-        client.post("${baseUrl(Protocol.HTTP)}/api/easyuse/cleangpu")
+        println(client.post("${baseUrl(Protocol.HTTP)}/api/easyuse/cleangpu").status)
     }
 
     private suspend fun updateQueue() {
