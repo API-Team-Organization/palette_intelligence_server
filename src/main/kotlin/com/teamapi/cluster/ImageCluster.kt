@@ -87,26 +87,39 @@ class ImageCluster(private val cfg: Config, private val callback: () -> Map<Stri
                                 val msg = it.readText()
                                 println("${cfg.comfyUrl}: $msg")
                                 val thing = Json.parseToJsonElement(msg)
-                                if (thing["type"].str() == "executing") {
-                                    if (thing["data"]["node"].str() == "ws_save") {
-                                        lastId.value = thing["data"]["prompt_id"].str()
-                                    } else if (thing["data"]!!["node"] as? JsonNull != null && lastId.value != null) {
-                                        val finishListener = callback()[lastId.value]
-                                        if (finishListener?.isClosedForSend == false) {
-                                            finishListener.trySend(
-                                                ActorMessage.GenerateResult(
-                                                    false,
-                                                    error = "Generated, but no image found."
-                                                )
-                                            ) // no happen maybe
-                                            finishListener.close()
+                                when (thing["type"].str()) {
+                                    "executing" -> {
+                                        if (thing["data"]["node"].str() == "ws_save") {
+                                            lastId.value = thing["data"]["prompt_id"].str()
+                                        } else if (thing["data"]!!["node"] as? JsonNull != null && lastId.value != null) {
+                                            val finishListener = callback()[lastId.value]
+                                            if (finishListener?.isClosedForSend == false) {
+                                                finishListener.trySend(
+                                                    ActorMessage.GenerateResult(
+                                                        false,
+                                                        error = "Generated, but no image found."
+                                                    )
+                                                ) // no happen maybe
+                                                finishListener.close()
+                                            }
                                         }
                                     }
-                                } else if (thing["type"].str() == "status") {
-                                    val remain = thing["data"]["status"]["exec_info"]["queue_remaining"].int()
-                                    if (remain == 0)
-                                        cleanup()
-                                    updateQueue()
+                                    "progress" -> {
+                                        // {"type": "progress", "data": {"value": 5, "max": 6, "prompt_id": "9c5ae1af-a554-44f5-bbce-94a70cd863d6", "node": "ef_ksampler_ed"}}
+                                        val data = thing["data"]
+                                        if (data["node"].str() != "ef_ksampler_ed") return@collect
+                                        val promptIdOrNull = data["prompt_id"].str()
+                                        promptIdOrNull?.let { id ->
+                                            callback()[id]?.send(ActorMessage.ImageProgress(data["value"].int()!!, data["max"]!!.int()!!))
+                                        }
+
+                                    }
+                                    "status" -> {
+                                        val remain = thing["data"]["status"]["exec_info"]["queue_remaining"].int()
+                                        if (remain == 0)
+                                            cleanup()
+                                        updateQueue()
+                                    }
                                 }
                             } else if (it is Frame.Binary && lastId.value != null) {
                                 val finishListener = callback()[lastId.value!!]

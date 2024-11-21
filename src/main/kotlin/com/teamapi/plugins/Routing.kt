@@ -101,10 +101,6 @@ fun Application.configureRouting() {
                     )
                 )
             }
-
-            clusters.forEach {
-                it.destroy()
-            }
         }
     })
 
