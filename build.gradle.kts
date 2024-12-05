@@ -32,6 +32,7 @@ dependencies {
     implementation("io.ktor:ktor-client-content-negotiation")
     implementation("io.ktor:ktor-client-websockets")
 
+    implementation("io.ktor:ktor-server-auth")
     implementation("io.ktor:ktor-server-websockets")
     implementation("io.ktor:ktor-server-content-negotiation-jvm")
     implementation("io.ktor:ktor-serialization-kotlinx-json-jvm")
